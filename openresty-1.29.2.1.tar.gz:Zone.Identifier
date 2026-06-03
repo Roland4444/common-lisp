@@ -1,0 +1,4 @@
+[ZoneTransfer]
+ZoneId=3
+ReferrerUrl=https://openresty.org/en/download.html
+HostUrl=https://openresty.org/download/openresty-1.29.2.1.tar.gz
