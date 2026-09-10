@@ -1,0 +1,69 @@
+;; DO NOT EDIT. RUN GENERATE TO REGENERATE
+<% import re, os, codegen %>
+(in-package :cl-amqp)
+
+(define-condition amqp-base-error (error)
+  ())
+
+(define-condition amqp-protocol-error (amqp-base-error)
+  ((reply-code :reader amqp-error-reply-code) ;auto-generated
+   (reply-text :initarg :reply-text
+               :reader amqp-error-reply-text)
+   (connection :initarg :connection
+               :reader amqp-error-connection)
+   (channel :initarg :channel
+            :reader amqp-error-channel)
+   (class-id :initarg :class-id
+             :reader amqp-error-class)
+   (method-id :initarg :method-id
+              :reader amqp-error-method))
+  (:report (lambda (condition stream)
+             (let ((method-signature (logior (ash (amqp-error-class condition) 16)
+                                             (amqp-error-method condition))))
+               (if (= 0 method-signature)
+                   (format stream "~A[~A, ~A]" (class-name (class-of condition))
+                           (amqp-error-reply-code condition)
+                           (amqp-error-reply-text condition))
+                   (format stream "~A[~A, ~A] in response to ~A" (class-name (class-of condition))
+                           (amqp-error-reply-code condition)
+                           (amqp-error-reply-text condition)
+                           (method-class-from-signature method-signature)))))))
+
+(define-condition amqp-channel-error (amqp-protocol-error)
+  ((channel :initarg :channel
+            :reader amqp-error-channel)))
+
+(define-condition amqp-connection-error (amqp-protocol-error)
+  ())
+% for (name, value, klass) in spec.constants:
+  % if klass:
+
+(define-condition amqp-error-${name.lower()} (${codegen.to_cl_condition_class(klass)})
+  ((reply-code :initform +amqp-${name.lower()}+)))
+  % endif
+% endfor
+
+(define-condition amqp-unknown-reply-code-error (amqp-base-error)  ;; TODO: can it be connection or channel error?
+  ((reply-code :initarg :reply-code
+               :reader amqp-error-reply-code)))
+
+(define-condition amqp-unknown-frame-type-error (amqp-connection-error)  ;; TODO: can it be connection or channel error?
+  ((frame-type :initarg :frame-type
+               :reader amqp-error-frame-type)))
+
+(define-condition amqp-unknown-method-error (amqp-connection-error)
+  ((method-signature :initarg :method-signature
+                     :reader amqp-error-method-signature)))
+
+(define-condition amqp-unknown-method-class-error (amqp-connection-error)
+  ((method-class :initarg :method-class
+                 :reader amqp-error-method-class)))
+
+(defun amqp-error-type-from-reply-code (reply-code)
+  (case reply-code
+% for (name, value, klass) in spec.constants:
+  % if klass:
+    (${value} #|+amqp-${name.lower()}+|# 'amqp-error-${name.lower()})
+  % endif
+% endfor
+    (t (error 'amqp-unknown-reply-code-error :reply-code reply-code))))

@@ -1,0 +1,215 @@
+;; DO NOT EDIT. RUN GENERATE TO REGENERATE
+<% import re, os, codegen %>
+<% import codegen_helpers as helpers %>
+(in-package :cl-amqp)
+
+(defclass amqp-class-base ()
+  ())
+
+(defclass amqp-method-base ()
+  ())
+
+
+% for m in spec.allMethods():
+(defclass ${m.method_lisp_class_name()} (amqp-method-base)
+(
+  % for arg in m.arguments:
+  (${arg.name} :type amqp-${spec.resolveDomain(arg.domain)} :initarg :${arg.name}${helpers.genMethodArgInitform(arg)} :reader amqp-method-field-${arg.name})
+  % endfor
+  % if m.hasContent:
+  (content :initarg :content :initform nil :reader amqp-method-content)
+  (content-properties :type amqp-${m.klass.name}-class-properties :initarg :content-properties :initform (make-instance 'amqp-${m.klass.name}-class-properties) :reader amqp-method-content-properties)
+  % endif
+))
+
+(defun decode-${m.method_lisp_class_name()} (ibuffer)
+  % if len(m.arguments) == 0:
+  (declare (ignore ibuffer))
+  (make-instance '${m.method_lisp_class_name()})
+  % else:
+  (let ((bit-buffer 0))
+    (declare (type (unsigned-byte 8) bit-buffer)
+             (ignorable bit-buffer))
+    (make-instance '${m.method_lisp_class_name()}
+  % for line in helpers.genDecodeMethodDefinition(spec, m):
+      ${line}
+  % endfor
+  ))
+  % endif
+)
+
+(defun encode-${m.method_lisp_class_name()} (method obuffer)
+  % if len(m.arguments) == 0:
+  (declare (ignore method obuffer))
+  % else:
+  (let ((bit-buffer 0))
+    (declare (type (unsigned-byte 8) bit-buffer)
+             (ignorable bit-buffer))
+  % for line in helpers.genEncodeMethodDefinition(spec, m):
+      ${line}
+  % endfor
+  )
+  % endif
+)
+
+(defmethod amqp-method-synchronous-p ((method ${m.method_lisp_class_name()}))
+% if m.isSynchronous:
+  (values t (lambda (method)
+  % if isinstance(m.method_synchronous_reply(), list):
+              (typecase method
+             % for reply in m.method_synchronous_reply():
+                (${'amqp-method-%s-%s' % (m.klass.name, reply)} t)
+             % endfor
+              )
+  % else:
+              (typep method '${'amqp-method-%s-%s' % (m.klass.name, m.method_synchronous_reply())})
+  % endif
+)))
+% else:
+  nil)
+% endif
+
+(defmethod amqp-method-has-content-p ((method ${m.method_lisp_class_name()}))
+  ${"t" if m.hasContent  else "nil"})
+
+(defmethod amqp-method-class-id ((method ${m.method_lisp_class_name()}))
+  ${m.klass.index})
+
+(defmethod amqp-method-method-id ((method ${m.method_lisp_class_name()}))
+  ${m.index})
+
+% endfor
+
+(defun method-decode (method-class ibuffer)
+  (case method-class
+  % for m in spec.allMethods():
+    (${m.method_lisp_class_name()} (decode-${m.method_lisp_class_name()} ibuffer))
+  % endfor
+    (t (error 'amqp-unknown-method-class-error :method-class method-class))))
+
+(defun method-encode (method obuffer)
+  (case (class-name (class-of method))
+  % for m in spec.allMethods():
+    (${m.method_lisp_class_name()} (encode-${m.method_lisp_class_name()} method obuffer))
+  % endfor
+    (t (error 'amqp-unknown-method-class-error :method-class (class-of method)))))
+
+
+(defmethod synchronous-method-p ((method-class symbol))
+  (case method-class
+% for m in spec.allMethods():
+    (${m.method_lisp_class_name()} ${"t" if m.isSynchronous  else "nil"})
+% endfor
+    (t (error 'amqp-unknown-method-class-error :method-class method-class))))
+
+(defmethod method-has-content-p ((method-class symbol))
+  (case method-class
+% for m in spec.allMethods():
+    (${m.method_lisp_class_name()} ${"t" if m.hasContent  else "nil"})
+% endfor
+    (t (error 'amqp-unknown-method-class-error :method-class method-class))))
+
+(defun method-class-from-signature(signature)
+  (case signature
+% for m in spec.allMethods():
+    (${m.method_signature()} '${m.method_lisp_class_name()})
+% endfor
+    (t (error 'amqp-unknown-method-error :method-signature signature))))
+
+(defun method-signature(method)
+  (case (class-name (class-of method))
+% for m in spec.allMethods():
+    (${m.method_lisp_class_name()} ${m.method_signature()})
+% endfor
+    (t (error 'amqp-unknown-method-class-error :method-class (class-of method)))))
+
+% for klass in spec.allClasses():
+ % if klass.fields:
+;; ${klass.name} class properties flags
+  % for line in helpers.genPropertiesClassFlags(spec, klass):
+${line}
+  % endfor
+
+;; ${klass.name} class properties
+(defclass amqp-${klass.name}-class-properties ()
+ (
+ % for prop in klass.fields:
+ (${prop.name} :type amqp-${spec.resolveDomain(prop.domain)} :initarg :${prop.name} :accessor amqp-property-${prop.name})
+ % endfor
+))
+
+;; ${klass.name} class properties encoder/decoder
+(defmethod amqp-class-properties-encoder ((props amqp-${klass.name}-class-properties) obuffer)
+  (let ((flags 0)
+        (props-buffer (new-obuffer)))
+  ;; TODO: add flags length declaration here
+  ;; TODO: also calculate how may bytes needed for flags encoding
+  ;; use this with refactored obuffer
+  % for prop in klass.fields:
+  % if spec.resolveDomain(prop.domain) == 'bit':
+    (when (and
+            (slot-boundp props '${prop.name})
+            (slot-value props '${prop.name}))
+      (setf flags (logior flags +flag-${prop.name}+)))
+  % else:
+    (when (slot-boundp props '${prop.name})
+      (setf flags (logior flags +flag-${prop.name}+))
+      (amqp-${spec.resolveDomain(prop.domain)}-encoder props-buffer (slot-value props '${prop.name})))
+  % endif
+  % endfor
+    (loop
+      as reminder = (ash flags -16)
+      as partial-flags = (logand flags #xfffe)
+      do
+         (when (not (= reminder 0))
+           (setf partial-flags (logior partial-flags 1)))
+
+         (obuffer-encode-ub16 obuffer partial-flags)
+         (setf flags reminder)
+         (if (zerop flags)
+             (return)))
+     (obuffer-add-bytes obuffer (obuffer-get-bytes props-buffer))))
+
+(defmethod amqp-class-properties-decoder ((class (eql 'amqp-${klass.name}-class-properties)) ibuffer)
+  (let* ((flags 0)
+         (flagword-index 0)
+         (initargs
+           (progn
+            (loop
+             as partial-flags = (ibuffer-decode-ub16 ibuffer)
+             do
+               (setf flags (logior flags (ash partial-flags (* flagword-index 16))))
+               (when (zerop (logand partial-flags 1))
+                 (return))
+               (incf flagword-index))
+            (collectors:with-collector-output (add-initarg)
+             % for prop in klass.fields:
+              % if spec.resolveDomain(prop.domain) == 'bit':
+               (add-initarg :${prop.name} (not (zerop (logand flags +flag-${prop.name}+))))
+              % else:
+             (unless (zerop (logand flags +flag-${prop.name}+))
+               (add-initarg :${prop.name} (amqp-${spec.resolveDomain(prop.domain)}-decoder ibuffer)))
+              % endif
+             % endfor
+             ))))
+    (apply #'make-instance class initargs)))
+ % endif
+% endfor
+
+(defun amqp-class-properties-class (class-id)
+  (case class-id
+% for klass in spec.allClasses():
+ % if klass.fields:
+    (${'#x%04X' % klass.index} 'amqp-${klass.name}-class-properties)
+ % endif
+% endfor
+    (t (error "AMQP Class ~a has no properties" class-id)))) ;; TODO: specialize error
+
+(defun amqp-class-properties-class-id (class-properties)
+  (case (class-name (class-of class-properties))
+% for klass in spec.allClasses():
+ % if klass.fields:
+    (amqp-${klass.name}-class-properties ${'#x%04X' % klass.index})
+ % endif
+% endfor
+    (t (error "Unknown properties class ~a" (class-name (class-of class-properties)))))) ;; TODO: specialize error
