@@ -1,0 +1,45 @@
+- [ ] librabbitmq memory handling
+- [X] Peplace old src/amqp.lisp functions with channel.send
+  - [X] amqp-basic-consume%
+  - [X] amqp-basic-cancel
+  - [X] amqp-basic-cancel-async
+  - [X] amqp-basic-ack
+  - [X] amqp-basic-ack-async
+  - [X] amqp-basic-nack
+  - [X] amqp-basic-nack-async
+- [X] Protocol
+  - [X] Basic.Get
+- [X] Connection string
+  - [X] Parser tests
+  - [X] Query string tests
+  - [X] Printer
+  - [X] Connection parameters support via url query
+- [X] Connection spec as list
+  - [X] Tests
+- [X] Connections Pool
+  - [X] Implementation
+  - [X] Tests
+  - [X] Printer
+  - [X] Printer tests
+- [-] Connection
+  - [X] handle server properties
+  - [ ] handle locales
+  - [ ] handle Connection.Tune
+  - [X] Heartbeats
+    - [X] support/implementation
+    - [X] tests
+- [X] Channel id allocator
+  - [X] Tests
+- [ ] SSL/TLS
+  - [ ] Support
+  - [ ] Tests
+- [X] Print-objects for
+  - [X] connection spec
+  - [X] connection
+  - [X] connections pool
+  - [X] message
+  - [X] queue
+  - [X] channel
+  - [X] consumer
+- [ ] Maybe add state slot[unsubsribed|active|cancelled] to Consumer
+  Note read/write operations should be probably guarded with rw-lock
